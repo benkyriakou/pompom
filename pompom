@@ -1,0 +1,80 @@
+#! /bin/bash
+
+set -o errexit -o nounset -o pipefail
+
+PIDFILE="/tmp/.pom-pid"
+
+_cleanup()
+{
+  echo "quitting pompom"
+  rm "${PIDFILE}"
+  exit
+}
+
+# @todo Is this pointless now?
+trap _cleanup SIGTERM
+
+COMMAND="${1:-start}"
+COMMANDTYPE="${2:-work}"
+
+_say()
+{
+  # @todo Add support for OSX say command
+  spd-say "${1}" --voice-type "female3"
+}
+
+_terminate()
+{
+  echo "${1}" 1>&2
+  exit 1
+}
+
+_savepid()
+{
+  echo "${1}" > "${PIDFILE}"
+  echo "Saving pid ${1}"
+}
+
+case "${COMMAND}" in
+  start )
+    # Check for the case where we have a $PIDFILE but the process is not running.
+    # This is because it's been killed by something else and hasn't tidied up.
+    if [[ -e "${PIDFILE}" ]]
+    then
+      _terminate "${0} is already running"
+    fi
+
+    case "${COMMANDTYPE}" in
+      work )
+        _say "start work"
+        # @todo Can this now be a nohup?
+        (sleep 10 && _say "stop work" && rm "${PIDFILE}") &
+        _savepid "${!}"
+        ;;
+      break )
+        _say "start break"
+        (sleep 10 && _say "stop break" && rm "${PIDFILE}") &
+        _savepid "${!}"
+        ;;
+    esac
+    ;;
+  stop )
+    if [[ ! -e "${PIDFILE}" ]]
+    then
+      _terminate "${0} is not running"
+    fi
+
+    echo "Stopping $(0)"
+
+    kill "$(cat ${PIDFILE})"
+    rm "${PIDFILE}"
+    ;;
+  status )
+    if [[ -e "${PIDFILE}" ]]
+    then
+      echo "${0} is running"
+    else
+      echo "${0} is not running"
+    fi
+    ;;
+esac
