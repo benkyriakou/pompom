@@ -2,23 +2,31 @@
 
 set -o errexit -o nounset -o pipefail
 
+# Default arguments.
+COMMAND="${1:-start}"
+COMMANDTYPE="${2:-work}"
+
+# Various state and config files.
 PIDFILE="/tmp/.pom-pid"
 STATEFILE="/tmp/.pom-state"
 CONFIGFILE="~/.pomconfig"
+
+# Set a nice name for easy referencing.
 SELF="$(basename "${0}")"
 
-_cleanup()
-{
-	echo "quitting pompom"
-	rm "${PIDFILE}"
-	exit
-}
+# Default intervals are 25 minutes and 5 minutes.
+WORKINTERVAL=$(( 60 * 25 ))
+BREAKINTERVAL=$(( 60 * 5 ))
 
-# @todo Is this pointless now?
-trap _cleanup SIGTERM
-
-COMMAND="${1:-start}"
-COMMANDTYPE="${2:-work}"
+#_cleanup()
+#{
+#	echo "quitting pompom"
+#	rm "${PIDFILE}"
+#	exit
+#}
+#
+## @todo Is this pointless now?
+#trap _cleanup SIGTERM
 
 _say()
 {
@@ -45,12 +53,16 @@ _rmpid()
 
 _setstate()
 {
-	cat <<-EOF > "${STATEFILE}"
-	OP=${1}
-	TIMESTAMP=$(date +%s)
-EOF
+	local TS REMAINING END
+	TS="$(date +%s)"
+	REMAINING="${3}"
+	END=$(( TS + REMAINING ))
 
-	[[ "${#}" -eq 2 ]] && echo "REMAINING=${2}" >> "${STATEFILE}"
+	echo "" > "${STATEFILE}"
+	echo "OP=${1}" >> "${STATEFILE}"
+	echo "END=${END}" >> "${STATEFILE}"
+	echo "STATE=${2}" >> "${STATEFILE}"
+	echo "REMAINING=${REMAINING}" >> "${STATEFILE}"
 }
 
 _rmstate()
@@ -68,7 +80,7 @@ _getstate()
 # have the PIDFILE.
 #
 # This is slightly convoluted, but lets us check for instances of pompom
-# which aren't the currently running process. N.B. the grep is also found.
+# which aren't the currently running process.
 # @todo there must be a better way...
 if [[ "$(pgrep -c "${SELF}")" -eq 1 && -e "${PIDFILE}" ]]
 then
@@ -76,10 +88,6 @@ then
 	_rmpid
 	_rmstate
 fi
-
-# Default intervals are 25 minutes and 5 minutes
-WORKINTERVAL=$(( 60 * 25 ))
-BREAKINTERVAL=$(( 60 * 5 ))
 
 case "${COMMAND}" in
 	start )
@@ -95,7 +103,7 @@ case "${COMMAND}" in
 				# @todo Can this now be a nohup?
 				(sleep "${INTERVAL}" && "${0}" switch > /dev/null 2>&1) &
 				_savepid "${!}"
-				_setstate "${COMMANDTYPE}"
+				_setstate "${COMMANDTYPE}" "${COMMAND}" "${INTERVAL}"
 				;;
 			break )
 				INTERVAL="${3:-10}"
@@ -103,17 +111,16 @@ case "${COMMAND}" in
 				_say "start break"
 				(sleep "${INTERVAL}" && "${0}" switch > /dev/null 2>&1) &
 				_savepid "${!}"
-				_setstate "${COMMANDTYPE}"
+				_setstate "${COMMANDTYPE}" "${COMMAND}" "${INTERVAL}"
 				;;
 		esac
-		exit 0
 		;;
 	stop )
 		# Deal with the paused state first since it's simpler.
 		# @todo Are there any flaws with this approach?
 		if [[ -e "${STATEFILE}" && ! -e "${PIDFILE}" ]]
 		then
-			read -p "${SELF} is paused. Are you sure you want to stop it? (y/n) > " C
+			read -r -p "${SELF} is paused. Are you sure you want to stop it? (y/n) > " C
 
 			if [[ "${C}" =~ ^[yY]$ ]]
 			then
@@ -128,13 +135,12 @@ case "${COMMAND}" in
 
 		[[ ! -e "${PIDFILE}" ]] && _terminate "${SELF} is not running"
 		echo "Stopping ${SELF}"
+		_say "Goodbye"
 		kill "$(cat ${PIDFILE})"
 		_rmpid
 		_rmstate
-		exit 0
 		;;
   switch )
-  	# @todo Switch between states
 		[[ ! -e "${PIDFILE}" ]] && _terminate "${SELF} is not running"
 		_getstate
 		_say "stop ${OP}"
@@ -145,9 +151,9 @@ case "${COMMAND}" in
 		OLDPID="$(cat ${PIDFILE})"
 		_rmpid
 		_rmstate
+		sleep 3
 
 		# This starts a new pompom process
-		sleep 3
 		case "${OP}" in
 		  work )
 		  	"${0}" start break
@@ -159,7 +165,6 @@ case "${COMMAND}" in
 
 		# Kill old pompom process
 		kill "${OLDPID}"
-		exit 0
   	;;
   pause )
 		[[ ! -e "${PIDFILE}" ]] && _terminate "${SELF} is not running"
@@ -168,30 +173,17 @@ case "${COMMAND}" in
 		_rmpid
   	_getstate
 
-  	# @todo This is flawed in the case where we pause and resume multiple times.
-  	NOW=$(date +%s)
-    case "${OP}" in
-    	work )
-    		REMAINING=$(( WORKINTERVAL - ( NOW - TIMESTAMP ) ))
-    		;;
-    	break )
-				REMAINING=$(( BREAKINTERVAL - ( NOW - TIMESTAMP ) ))
-				;;
-    esac
-
-		_setstate "${OP}" "${REMAINING}"
-		exit 0
+  	NOW="$(date +%s)"
+		_setstate "${OP}" "${COMMAND}" "$(( END - NOW ))"
   	;;
 	resume )
 		[[ -e "${PIDFILE}" ]] && _terminate "${SELF} is already running"
 		[[ ! -e "${STATEFILE}" ]] && _terminate "No state exists to resume"
 		_getstate
 
-		# @todo We should be replacing TIMESTAMP with REMAINING in state when pausing.
-		[[ -z "${REMAINING}" ]] && _terminate "No time remaining set in state"
+		[[ "${STATE}" != "pause" ]] && _terminate "${SELF} is not paused. Current state is '${STATE}'"
 		echo "Resuming ${OP} with ${REMAINING}s remaining"
 		"${0}" start "${OP}" "${REMAINING}"
-		exit 0
 		;;
 	status )
 		if [[ -e "${PIDFILE}" ]]
@@ -200,13 +192,13 @@ case "${COMMAND}" in
 		else
 			echo "${SELF} is not running"
 		fi
-		exit 0
 		;;
 	config )
-		echo "Config doesn't exist yet" 2>&1
-		exit 1
+		_terminate "Config doesn't exist yet"
 		;;
 	* )
-		echo "'${1}' is not a valid command" 2>&1
-		exit 1
+		_terminate "'${1}' is not a valid command"
+		;;
 esac
+
+exit 0
