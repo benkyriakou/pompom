@@ -40,6 +40,11 @@ _terminate()
 	exit 1
 }
 
+_isrunning()
+{
+	[[ -e "${PIDFILE}" ]]
+}
+
 _savepid()
 {
 	echo "${1}" > "${PIDFILE}"
@@ -48,7 +53,12 @@ _savepid()
 
 _rmpid()
 {
-	[[ -e "${PIDFILE}" ]] && rm "${PIDFILE}"
+	_isrunning && rm "${PIDFILE}"
+}
+
+_hasstate()
+{
+	[[ -e "${STATEFILE}" ]]
 }
 
 _setstate()
@@ -58,23 +68,25 @@ _setstate()
 	REMAINING="${3}"
 	END=$(( TS + REMAINING ))
 
-	echo "" > "${STATEFILE}"
-	echo "OP=${1}" >> "${STATEFILE}"
-	echo "END=${END}" >> "${STATEFILE}"
-	echo "STATE=${2}" >> "${STATEFILE}"
-	echo "REMAINING=${REMAINING}" >> "${STATEFILE}"
+	cat <<-EOF > "${STATEFILE}"
+	OP=${1}
+	STATE=${2}
+	REMAINING=${REMAINING}
+	END=${END}
+EOF
 }
 
 _rmstate()
 {
-	[[ -e "${STATEFILE}" ]] && rm "${STATEFILE}"
+	_hasstate && rm "${STATEFILE}"
 }
 
-# @todo Check for existence of statefile?
+# @todo Make this more secure.
 _getstate()
 {
-	[[ -e "${STATEFILE}" ]] && source "${STATEFILE}"
+	_hasstate && source "${STATEFILE}"
 }
+
 
 # Test for the case where the command has been independently killed but we still
 # have the PIDFILE.
@@ -82,7 +94,7 @@ _getstate()
 # This is slightly convoluted, but lets us check for instances of pompom
 # which aren't the currently running process.
 # @todo there must be a better way...
-if [[ "$(pgrep -c "${SELF}")" -eq 1 && -e "${PIDFILE}" ]]
+if [[ "$(pgrep -c "${SELF}")" -eq 1 ]] && _isrunning
 then
 	echo "Removing pid"
 	_rmpid
@@ -93,32 +105,32 @@ case "${COMMAND}" in
 	start )
 		# Check for the case where we have a $PIDFILE but the process is not running.
 		# This is because it's been killed by something else and hasn't tidied up.
-		[[ -e "${PIDFILE}" ]] && _terminate "${SELF} is already running"
+		_isrunning && _terminate "${SELF} is already running"
+
+		# Allow for starting with a delay between states.
+		# This makes it killable even between states, as it always has a pid.
+		DELAY="${4:-0}"
 
 		case "${COMMANDTYPE}" in
 			work )
-				INTERVAL="${3:-10}"
-
-				_say "start work"
+				INTERVAL="${3:-$WORKINTERVAL}"
 				# @todo Can this now be a nohup?
-				(sleep "${INTERVAL}" && "${0}" switch > /dev/null 2>&1) &
+				(sleep "${DELAY}" && _say "start work" && sleep "${INTERVAL}" && "${0}" switch > /dev/null 2>&1) &
 				_savepid "${!}"
-				_setstate "${COMMANDTYPE}" "${COMMAND}" "${INTERVAL}"
+				_setstate "${COMMANDTYPE}" "${COMMAND}" "$(( INTERVAL + DELAY ))"
 				;;
 			break )
-				INTERVAL="${3:-10}"
-
-				_say "start break"
-				(sleep "${INTERVAL}" && "${0}" switch > /dev/null 2>&1) &
+				INTERVAL="${3:-$BREAKINTERVAL}"
+				(sleep "${DELAY}" && _say "start break" && sleep "${INTERVAL}" && "${0}" switch > /dev/null 2>&1) &
 				_savepid "${!}"
-				_setstate "${COMMANDTYPE}" "${COMMAND}" "${INTERVAL}"
+				_setstate "${COMMANDTYPE}" "${COMMAND}" "$(( INTERVAL + DELAY ))"
 				;;
 		esac
 		;;
 	stop )
 		# Deal with the paused state first since it's simpler.
 		# @todo Are there any flaws with this approach?
-		if [[ -e "${STATEFILE}" && ! -e "${PIDFILE}" ]]
+		if _hasstate && ! _isrunning
 		then
 			read -r -p "${SELF} is paused. Are you sure you want to stop it? (y/n) > " C
 
@@ -133,52 +145,51 @@ case "${COMMAND}" in
 			exit 0
 		fi
 
-		[[ ! -e "${PIDFILE}" ]] && _terminate "${SELF} is not running"
+		! _isrunning && _terminate "${SELF} is not running"
 		echo "Stopping ${SELF}"
 		_say "Goodbye"
 		kill "$(cat ${PIDFILE})"
 		_rmpid
 		_rmstate
 		;;
-  switch )
-		[[ ! -e "${PIDFILE}" ]] && _terminate "${SELF} is not running"
+	switch )
+		! _isrunning && _terminate "${SELF} is not running"
 		_getstate
 		_say "stop ${OP}"
 
-		# This might have to do a bit of a switcheroo.
-		# Manually get the current pid, then start the new process, and stop the
-		# process with the saved pid afterwards to prevent killing itself.
+		# We save the old PID to allow us to start a new process then kill
+		# the old one without ending up overwriting the old pid file and
+		# killing the wrong process.
 		OLDPID="$(cat ${PIDFILE})"
 		_rmpid
 		_rmstate
-		sleep 3
 
 		# This starts a new pompom process
 		case "${OP}" in
-		  work )
-		  	"${0}" start break
-		  	;;
-		  break )
-				"${0}" start work
+			work )
+				"${0}" start break "${BREAKINTERVAL}" 2
+				;;
+			break )
+				"${0}" start work "${WORKINTERVAL}" 2
 				;;
 		esac
 
 		# Kill old pompom process
 		kill "${OLDPID}"
-  	;;
-  pause )
-		[[ ! -e "${PIDFILE}" ]] && _terminate "${SELF} is not running"
+		;;
+	pause )
+		! _isrunning && _terminate "${SELF} is not running"
 		echo "Pausing ${SELF}"
 		kill "$(cat ${PIDFILE})"
 		_rmpid
-  	_getstate
+		_getstate
 
-  	NOW="$(date +%s)"
+		NOW="$(date +%s)"
 		_setstate "${OP}" "${COMMAND}" "$(( END - NOW ))"
-  	;;
+		;;
 	resume )
-		[[ -e "${PIDFILE}" ]] && _terminate "${SELF} is already running"
-		[[ ! -e "${STATEFILE}" ]] && _terminate "No state exists to resume"
+		_isrunning && _terminate "${SELF} is already running"
+		! _hasstate && _terminate "No state exists to resume"
 		_getstate
 
 		[[ "${STATE}" != "pause" ]] && _terminate "${SELF} is not paused. Current state is '${STATE}'"
@@ -186,9 +197,17 @@ case "${COMMAND}" in
 		"${0}" start "${OP}" "${REMAINING}"
 		;;
 	status )
-		if [[ -e "${PIDFILE}" ]]
+		if _isrunning || _hasstate
 		then
-			echo "${SELF} is running"
+			_getstate
+
+			if [[ "${STATE}" = "pause" ]]
+			then
+				echo "Currently paused in ${OP} mode. ${REMAINING} seconds remaining."
+			else
+				NOW=$(date +%s)
+				echo "Currently in ${OP} mode. $(( END - NOW)) seconds remaining."
+			fi
 		else
 			echo "${SELF} is not running"
 		fi
