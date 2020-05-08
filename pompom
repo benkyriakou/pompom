@@ -74,6 +74,7 @@ if [[ "$(pgrep -c "${SELF}")" -eq 1 && -e "${PIDFILE}" ]]
 then
 	echo "Removing pid"
 	_rmpid
+	_rmstate
 fi
 
 # Default intervals are 25 minutes and 5 minutes
@@ -84,7 +85,7 @@ case "${COMMAND}" in
 	start )
 		# Check for the case where we have a $PIDFILE but the process is not running.
 		# This is because it's been killed by something else and hasn't tidied up.
-		[[ -e "${PIDFILE}" ]] && _terminate "${0} is already running"
+		[[ -e "${PIDFILE}" ]] && _terminate "${SELF} is already running"
 
 		case "${COMMANDTYPE}" in
 			work )
@@ -92,7 +93,7 @@ case "${COMMAND}" in
 
 				_say "start work"
 				# @todo Can this now be a nohup?
-				(sleep "${INTERVAL}" && _say "stop work" && _rmpid && _rmstate) &
+				(sleep "${INTERVAL}" && "${0}" switch > /dev/null 2>&1) &
 				_savepid "${!}"
 				_setstate "${COMMANDTYPE}"
 				;;
@@ -100,7 +101,7 @@ case "${COMMAND}" in
 				INTERVAL="${3:-10}"
 
 				_say "start break"
-				(sleep "${INTERVAL}" && _say "stop break" && _rmpid && _rmstate) &
+				(sleep "${INTERVAL}" && "${0}" switch > /dev/null 2>&1) &
 				_savepid "${!}"
 				_setstate "${COMMANDTYPE}"
 				;;
@@ -108,17 +109,61 @@ case "${COMMAND}" in
 		exit 0
 		;;
 	stop )
-		# @todo Cater for the paused state
-		[[ ! -e "${PIDFILE}" ]] && _terminate "${0} is not running"
-		echo "Stopping ${0}"
+		# Deal with the paused state first since it's simpler.
+		# @todo Are there any flaws with this approach?
+		if [[ -e "${STATEFILE}" && ! -e "${PIDFILE}" ]]
+		then
+			read -p "${SELF} is paused. Are you sure you want to stop it? (y/n) > " C
+
+			if [[ "${C}" =~ ^[yY]$ ]]
+			then
+				echo "Stopping ${SELF}"
+				_rmstate
+			else
+				echo "Cancelling"
+			fi
+
+			exit 0
+		fi
+
+		[[ ! -e "${PIDFILE}" ]] && _terminate "${SELF} is not running"
+		echo "Stopping ${SELF}"
 		kill "$(cat ${PIDFILE})"
 		_rmpid
 		_rmstate
 		exit 0
 		;;
+  switch )
+  	# @todo Switch between states
+		[[ ! -e "${PIDFILE}" ]] && _terminate "${SELF} is not running"
+		_getstate
+		_say "stop ${OP}"
+
+		# This might have to do a bit of a switcheroo.
+		# Manually get the current pid, then start the new process, and stop the
+		# process with the saved pid afterwards to prevent killing itself.
+		OLDPID="$(cat ${PIDFILE})"
+		_rmpid
+		_rmstate
+
+		# This starts a new pompom process
+		sleep 3
+		case "${OP}" in
+		  work )
+		  	"${0}" start break
+		  	;;
+		  break )
+				"${0}" start work
+				;;
+		esac
+
+		# Kill old pompom process
+		kill "${OLDPID}"
+		exit 0
+  	;;
   pause )
-		[[ ! -e "${PIDFILE}" ]] && _terminate "${0} is not running"
-		echo "Pausing ${0}"
+		[[ ! -e "${PIDFILE}" ]] && _terminate "${SELF} is not running"
+		echo "Pausing ${SELF}"
 		kill "$(cat ${PIDFILE})"
 		_rmpid
   	_getstate
@@ -138,7 +183,7 @@ case "${COMMAND}" in
 		exit 0
   	;;
 	resume )
-		[[ -e "${PIDFILE}" ]] && _terminate "${0} is already running"
+		[[ -e "${PIDFILE}" ]] && _terminate "${SELF} is already running"
 		[[ ! -e "${STATEFILE}" ]] && _terminate "No state exists to resume"
 		_getstate
 
@@ -151,9 +196,9 @@ case "${COMMAND}" in
 	status )
 		if [[ -e "${PIDFILE}" ]]
 		then
-			echo "${0} is running"
+			echo "${SELF} is running"
 		else
-			echo "${0} is not running"
+			echo "${SELF} is not running"
 		fi
 		exit 0
 		;;
