@@ -30,8 +30,12 @@ BREAKINTERVAL=$(( 60 * 5 ))
 
 _say()
 {
-	# @todo Add support for OSX say command
-	spd-say "${1}" --voice-type "female3"
+	if command -v say > /dev/null 1>&2
+	then
+		say -v Moira "${1}"
+	else
+		spd-say "${1}" --voice-type "female3"
+	fi
 }
 
 _terminate()
@@ -109,7 +113,8 @@ _timefmt()
 # This is slightly convoluted, but lets us check for instances of pompom
 # which aren't the currently running process.
 # @todo there must be a better way...
-if [[ "$(pgrep -c "${SELF}")" -eq 1 ]] && _isrunning
+# N.B. wc is used deliberately here as pgrep on OSX doesn't support -c.
+if [[ "$(pgrep "${SELF}" | wc -l)" -eq 1 ]] && _isrunning
 then
 	echo "Removing pid"
 	_rmpid
