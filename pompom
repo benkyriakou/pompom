@@ -3,12 +3,15 @@
 set -o errexit -o nounset -o pipefail
 
 PIDFILE="/tmp/.pom-pid"
+STATEFILE="/tmp/.pom-state"
+CONFIGFILE="~/.pomconfig"
+SELF="$(basename "${0}")"
 
 _cleanup()
 {
-  echo "quitting pompom"
-  rm "${PIDFILE}"
-  exit
+	echo "quitting pompom"
+	rm "${PIDFILE}"
+	exit
 }
 
 # @todo Is this pointless now?
@@ -19,62 +22,146 @@ COMMANDTYPE="${2:-work}"
 
 _say()
 {
-  # @todo Add support for OSX say command
-  spd-say "${1}" --voice-type "female3"
+	# @todo Add support for OSX say command
+	spd-say "${1}" --voice-type "female3"
 }
 
 _terminate()
 {
-  echo "${1}" 1>&2
-  exit 1
+	echo "${1}" 1>&2
+	exit 1
 }
 
 _savepid()
 {
-  echo "${1}" > "${PIDFILE}"
-  echo "Saving pid ${1}"
+	echo "${1}" > "${PIDFILE}"
+	echo "Saving pid ${1}"
 }
 
+_rmpid()
+{
+	[[ -e "${PIDFILE}" ]] && rm "${PIDFILE}"
+}
+
+_setstate()
+{
+	cat <<-EOF > "${STATEFILE}"
+	OP=${1}
+	TIMESTAMP=$(date +%s)
+EOF
+
+	[[ "${#}" -eq 2 ]] && echo "REMAINING=${2}" >> "${STATEFILE}"
+}
+
+_rmstate()
+{
+	[[ -e "${STATEFILE}" ]] && rm "${STATEFILE}"
+}
+
+# @todo Check for existence of statefile?
+_getstate()
+{
+	[[ -e "${STATEFILE}" ]] && source "${STATEFILE}"
+}
+
+# Test for the case where the command has been independently killed but we still
+# have the PIDFILE.
+#
+# This is slightly convoluted, but lets us check for instances of pompom
+# which aren't the currently running process. N.B. the grep is also found.
+# @todo there must be a better way...
+if [[ "$(pgrep -c "${SELF}")" -eq 1 && -e "${PIDFILE}" ]]
+then
+	echo "Removing pid"
+	_rmpid
+fi
+
+# Default intervals are 25 minutes and 5 minutes
+WORKINTERVAL=$(( 60 * 25 ))
+BREAKINTERVAL=$(( 60 * 5 ))
+
 case "${COMMAND}" in
-  start )
-    # Check for the case where we have a $PIDFILE but the process is not running.
-    # This is because it's been killed by something else and hasn't tidied up.
-    if [[ -e "${PIDFILE}" ]]
-    then
-      _terminate "${0} is already running"
-    fi
+	start )
+		# Check for the case where we have a $PIDFILE but the process is not running.
+		# This is because it's been killed by something else and hasn't tidied up.
+		[[ -e "${PIDFILE}" ]] && _terminate "${0} is already running"
 
-    case "${COMMANDTYPE}" in
-      work )
-        _say "start work"
-        # @todo Can this now be a nohup?
-        (sleep 10 && _say "stop work" && rm "${PIDFILE}") &
-        _savepid "${!}"
-        ;;
-      break )
-        _say "start break"
-        (sleep 10 && _say "stop break" && rm "${PIDFILE}") &
-        _savepid "${!}"
-        ;;
+		case "${COMMANDTYPE}" in
+			work )
+				INTERVAL="${3:-10}"
+
+				_say "start work"
+				# @todo Can this now be a nohup?
+				(sleep "${INTERVAL}" && _say "stop work" && _rmpid && _rmstate) &
+				_savepid "${!}"
+				_setstate "${COMMANDTYPE}"
+				;;
+			break )
+				INTERVAL="${3:-10}"
+
+				_say "start break"
+				(sleep "${INTERVAL}" && _say "stop break" && _rmpid && _rmstate) &
+				_savepid "${!}"
+				_setstate "${COMMANDTYPE}"
+				;;
+		esac
+		exit 0
+		;;
+	stop )
+		# @todo Cater for the paused state
+		[[ ! -e "${PIDFILE}" ]] && _terminate "${0} is not running"
+		echo "Stopping ${0}"
+		kill "$(cat ${PIDFILE})"
+		_rmpid
+		_rmstate
+		exit 0
+		;;
+  pause )
+		[[ ! -e "${PIDFILE}" ]] && _terminate "${0} is not running"
+		echo "Pausing ${0}"
+		kill "$(cat ${PIDFILE})"
+		_rmpid
+  	_getstate
+
+  	# @todo This is flawed in the case where we pause and resume multiple times.
+  	NOW=$(date +%s)
+    case "${OP}" in
+    	work )
+    		REMAINING=$(( WORKINTERVAL - ( NOW - TIMESTAMP ) ))
+    		;;
+    	break )
+				REMAINING=$(( BREAKINTERVAL - ( NOW - TIMESTAMP ) ))
+				;;
     esac
-    ;;
-  stop )
-    if [[ ! -e "${PIDFILE}" ]]
-    then
-      _terminate "${0} is not running"
-    fi
 
-    echo "Stopping $(0)"
+		_setstate "${OP}" "${REMAINING}"
+		exit 0
+  	;;
+	resume )
+		[[ -e "${PIDFILE}" ]] && _terminate "${0} is already running"
+		[[ ! -e "${STATEFILE}" ]] && _terminate "No state exists to resume"
+		_getstate
 
-    kill "$(cat ${PIDFILE})"
-    rm "${PIDFILE}"
-    ;;
-  status )
-    if [[ -e "${PIDFILE}" ]]
-    then
-      echo "${0} is running"
-    else
-      echo "${0} is not running"
-    fi
-    ;;
+		# @todo We should be replacing TIMESTAMP with REMAINING in state when pausing.
+		[[ -z "${REMAINING}" ]] && _terminate "No time remaining set in state"
+		echo "Resuming ${OP} with ${REMAINING}s remaining"
+		"${0}" start "${OP}" "${REMAINING}"
+		exit 0
+		;;
+	status )
+		if [[ -e "${PIDFILE}" ]]
+		then
+			echo "${0} is running"
+		else
+			echo "${0} is not running"
+		fi
+		exit 0
+		;;
+	config )
+		echo "Config doesn't exist yet" 2>&1
+		exit 1
+		;;
+	* )
+		echo "'${1}' is not a valid command" 2>&1
+		exit 1
 esac
