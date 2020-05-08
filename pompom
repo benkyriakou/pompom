@@ -30,7 +30,7 @@ BREAKINTERVAL=$(( 60 * 5 ))
 
 _say()
 {
-	if command -v say > /dev/null 1>&2
+	if [[ -x "$(command -v say)" ]]
 	then
 		say -v Moira "${1}"
 	else
