@@ -87,6 +87,21 @@ _getstate()
 	_hasstate && source "${STATEFILE}"
 }
 
+_timefmt()
+{
+	local M
+	M=$(( $1 / 60 ))
+
+	if ! (( M ))
+	then
+		echo "${1} seconds remaining"
+	elif [ "${M}" -eq 1 ]
+	then
+		echo "1 minute remaining"
+	else
+		echo "${M} minutes remaining"
+	fi
+}
 
 # Test for the case where the command has been independently killed but we still
 # have the PIDFILE.
@@ -193,7 +208,7 @@ case "${COMMAND}" in
 		_getstate
 
 		[[ "${STATE}" != "pause" ]] && _terminate "${SELF} is not paused. Current state is '${STATE}'"
-		echo "Resuming ${OP} with ${REMAINING}s remaining"
+		echo "Resuming ${OP} with $(_timefmt "${REMAINING}") remaining"
 		"${0}" start "${OP}" "${REMAINING}"
 		;;
 	status )
@@ -203,10 +218,10 @@ case "${COMMAND}" in
 
 			if [[ "${STATE}" = "pause" ]]
 			then
-				echo "Currently paused in ${OP} mode. ${REMAINING} seconds remaining."
+				echo "Currently paused in ${OP} mode. $(_timefmt "${REMAINING}") remaining."
 			else
 				NOW=$(date +%s)
-				echo "Currently in ${OP} mode. $(( END - NOW)) seconds remaining."
+				echo "Currently in ${OP} mode. $(_timefmt $(( END - NOW ))) remaining."
 			fi
 		else
 			echo "${SELF} is not running"
