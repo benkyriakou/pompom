@@ -129,8 +129,10 @@ fi
 #
 # This is slightly convoluted, but lets us check for instances of pompom
 # which aren't the currently running process.
-# @todo there must be a better way...
+#
 # N.B. wc is used deliberately here as pgrep on OSX doesn't support -c.
+#
+# @todo Can we simplify this check?
 if [[ "$(pgrep "${SELF}" | wc -l)" -eq 1 ]] && _isrunning
 then
 	echo "Removing pid"
@@ -140,8 +142,6 @@ fi
 
 case "${COMMAND}" in
 	start )
-		# Check for the case where we have a $PIDFILE but the process is not running.
-		# This is because it's been killed by something else and hasn't tidied up.
 		_isrunning && _terminate "${SELF} is already running"
 
 		# Allow for starting with a delay between states.
