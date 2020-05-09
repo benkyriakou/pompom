@@ -24,6 +24,24 @@ _terminate()
 	exit 1
 }
 
+_alert() {
+	_say "${1}"
+	_notify "${1}"
+}
+
+_notify()
+{
+	local MSG
+	MSG="${1:-}"
+
+	if [[ -x "$(command -v osascript)" ]]
+	then
+		osascript -e "display notification \"${MSG}\" with title \"${SELF}\""
+	else
+		zenity --notification --text="${SELF} - ${MSG}" --timeout=2 &
+	fi
+}
+
 _say()
 {
 	if [[ -x "$(command -v say)" ]]
@@ -101,6 +119,11 @@ then
 	_terminate "This requires one of 'say' or 'spd-say' to be available on your system"
 fi
 
+if [[ ! -x "$(command -v osascript)" && ! -x "$(command -v zenity)" ]]
+then
+	_terminate "This requires one of 'say' or 'spd-say' to be available on your system"
+fi
+
 if [[ "${#}" -eq 1 &&  "${1}" = "-h" ]]
 then
 	cat <<-EOF 1>&2
@@ -150,13 +173,13 @@ case "${COMMAND}" in
 			work )
 				INTERVAL="${3:-$WORKINTERVAL}"
 				# @todo Can this now be a nohup?
-				(sleep "${DELAY}" && _say "start work" && sleep "${INTERVAL}" && "${0}" switch > /dev/null 2>&1) &
+				(sleep "${DELAY}" && _alert "start work" && sleep "${INTERVAL}" && "${0}" switch > /dev/null 2>&1) &
 				_savepid "${!}"
 				_setstate "${COMMANDTYPE}" "${COMMAND}" "$(( INTERVAL + DELAY ))"
 				;;
 			break )
 				INTERVAL="${3:-$BREAKINTERVAL}"
-				(sleep "${DELAY}" && _say "start break" && sleep "${INTERVAL}" && "${0}" switch > /dev/null 2>&1) &
+				(sleep "${DELAY}" && _alert "start break" && sleep "${INTERVAL}" && "${0}" switch > /dev/null 2>&1) &
 				_savepid "${!}"
 				_setstate "${COMMANDTYPE}" "${COMMAND}" "$(( INTERVAL + DELAY ))"
 				;;
@@ -190,7 +213,7 @@ case "${COMMAND}" in
 	switch )
 		! _isrunning && _terminate "${SELF} is not running"
 		_getstate
-		_say "stop ${OP}"
+		_alert "stop ${OP}"
 
 		# We save the old PID to allow us to start a new process then kill
 		# the old one without ending up overwriting the old pid file and
@@ -202,10 +225,10 @@ case "${COMMAND}" in
 		# This starts a new pompom process
 		case "${OP}" in
 			work )
-				"${0}" start "break" "${BREAKINTERVAL}" 2
+				"${0}" start "break" "${BREAKINTERVAL}" 3
 				;;
 			break )
-				"${0}" start work "${WORKINTERVAL}" 2
+				"${0}" start work "${WORKINTERVAL}" 3
 				;;
 		esac
 
