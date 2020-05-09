@@ -36,7 +36,7 @@ _notify()
 
 	if [[ -x "$(command -v osascript)" ]]
 	then
-		osascript -e "display notification '${MSG}' with title '${SELF}'"
+		osascript -e "display notification \"${MSG}\" with title \"${SELF}\""
 	else
 		zenity --notification --text="${SELF} - ${MSG}" --timeout=2 &
 	fi
