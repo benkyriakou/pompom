@@ -27,7 +27,7 @@ until resumed
 To install, just download the script and place it in a location that's in your `$PATH`. For example;
 
 ```
-curl https://github.com/benkyriakou/pompom/blob/master/pompom > pompom
+curl https://raw.githubusercontent.com/benkyriakou/pompom/master/pompom > pompom
 chmod 775 pompom
 sudo mv ./pompom /usr/bin/pompom
 ```
