@@ -87,12 +87,12 @@ _timefmt()
 
 	if ! (( M ))
 	then
-		echo "${1} seconds remaining"
+		echo "${1} seconds"
 	elif [ "${M}" -eq 1 ]
 	then
-		echo "1 minute remaining"
+		echo "1 minute"
 	else
-		echo "${M} minutes remaining"
+		echo "${M} minutes"
 	fi
 }
 
@@ -228,7 +228,7 @@ case "${COMMAND}" in
 		_getstate
 
 		[[ "${STATE}" != "pause" ]] && _terminate "${SELF} is not paused. Current state is '${STATE}'"
-		echo "Resuming ${OP} with $(_timefmt "${REMAINING}")"
+		echo "Resuming ${OP} with $(_timefmt "${REMAINING}") remaining"
 		"${0}" start "${OP}" "${REMAINING}"
 		;;
 	status )
