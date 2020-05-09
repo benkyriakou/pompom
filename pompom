@@ -18,15 +18,11 @@ SELF="$(basename "${0}")"
 WORKINTERVAL=$(( 60 * 25 ))
 BREAKINTERVAL=$(( 60 * 5 ))
 
-#_cleanup()
-#{
-#	echo "quitting pompom"
-#	rm "${PIDFILE}"
-#	exit
-#}
-#
-## @todo Is this pointless now?
-#trap _cleanup SIGTERM
+_terminate()
+{
+	echo "${1}" 1>&2
+	exit 1
+}
 
 _say()
 {
@@ -36,12 +32,6 @@ _say()
 	else
 		spd-say "${1}" --voice-type "female3"
 	fi
-}
-
-_terminate()
-{
-	echo "${1}" 1>&2
-	exit 1
 }
 
 _isrunning()
@@ -106,6 +96,33 @@ _timefmt()
 		echo "${M} minutes remaining"
 	fi
 }
+
+if [[ ! -x "$(command -v say)" && ! -x "$(command -v spd-say)" ]]
+then
+	_terminate "This requires one of 'say' or 'spd-say' to be available on your system"
+fi
+
+if [[ "${1}" = "-h" ]]
+then
+	cat <<-EOF 1>&2
+	pompom is a simple audio-based command-line pomodoro utility.
+
+	It has the following options:
+
+	'start [work|break]' will begin either a work or break, and continue
+	switching modes thereafter until stopped
+
+	'stop' will halt the current pomodoro session
+
+	'status' will give the current pomodoro interval status and time
+
+	'pause' will pause the current pomodoro at the current time interval
+	until resumed
+
+	'resume' will resume a paused pomodoro interval
+EOF
+  exit 1
+fi
 
 # Test for the case where the command has been independently killed but we still
 # have the PIDFILE.
