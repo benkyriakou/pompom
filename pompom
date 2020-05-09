@@ -42,7 +42,6 @@ _isrunning()
 _savepid()
 {
 	echo "${1}" > "${PIDFILE}"
-	echo "Saving pid ${1}"
 }
 
 _rmpid()
@@ -102,7 +101,7 @@ then
 	_terminate "This requires one of 'say' or 'spd-say' to be available on your system"
 fi
 
-if [[ "${1}" = "-h" ]]
+if [[ "${#}" -eq 1 &&  "${1}" = "-h" ]]
 then
 	cat <<-EOF 1>&2
 	pompom is a simple audio-based command-line pomodoro utility.
@@ -135,7 +134,6 @@ fi
 # @todo Can we simplify this check?
 if [[ "$(pgrep "${SELF}" | wc -l)" -eq 1 ]] && _isrunning
 then
-	echo "Removing pid"
 	_rmpid
 	_rmstate
 fi
@@ -230,7 +228,7 @@ case "${COMMAND}" in
 		_getstate
 
 		[[ "${STATE}" != "pause" ]] && _terminate "${SELF} is not paused. Current state is '${STATE}'"
-		echo "Resuming ${OP} with $(_timefmt "${REMAINING}") remaining"
+		echo "Resuming ${OP} with $(_timefmt "${REMAINING}")"
 		"${0}" start "${OP}" "${REMAINING}"
 		;;
 	status )
