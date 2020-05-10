@@ -13,7 +13,7 @@ STATEFILE="/tmp/.pom-state"
 # Set a nice name for easy referencing.
 SELF="$(basename "${0}")"
 
-# Configuration options
+# Configuration options.
 POMPOM_WORK_INTERVAL="${POM_WORK_INTERVAL:-25}"
 POMPOM_BREAK_INTERVAL="${POMPOM_BREAK_INTERVAL:-5}"
 POMPOM_SILENT="${POMPOM_SILENT:-0}"
@@ -154,7 +154,7 @@ then
 
 	'config' will show the current configuration
 EOF
-  exit 1
+  exit 0
 fi
 
 # Test for the case where the command has been independently killed but we still
@@ -233,7 +233,7 @@ case "${COMMAND}" in
 		_rmpid
 		_rmstate
 
-		# This starts a new pompom process
+		# This starts a new pompom process.
 		case "${OP}" in
 			work )
 				"${0}" start "break" "${BREAKINTERVAL}" 3
@@ -243,7 +243,7 @@ case "${COMMAND}" in
 				;;
 		esac
 
-		# Kill old pompom process
+		# Kill old pompom process.
 		kill "${OLDPID}"
 		;;
 	pause )
