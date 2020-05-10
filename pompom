@@ -121,10 +121,10 @@ fi
 
 if [[ ! -x "$(command -v osascript)" && ! -x "$(command -v zenity)" ]]
 then
-	_terminate "This requires one of 'say' or 'spd-say' to be available on your system"
+	_terminate "This requires one of 'osascript' or 'zenity' to be available on your system"
 fi
 
-if [[ "${#}" -eq 1 &&  "${1}" = "-h" ]]
+if [[ "${#}" -eq 1 && "${1}" = "-h" ]]
 then
 	cat <<-EOF 1>&2
 	pompom is a simple audio-based command-line pomodoro utility.
