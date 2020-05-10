@@ -6,17 +6,22 @@ set -o errexit -o nounset -o pipefail
 COMMAND="${1:-start}"
 COMMANDTYPE="${2:-work}"
 
-# Various state and config files.
+# Files for storing the current PID and state.
 PIDFILE="/tmp/.pom-pid"
 STATEFILE="/tmp/.pom-state"
-CONFIGFILE="~/.pomconfig"
 
 # Set a nice name for easy referencing.
 SELF="$(basename "${0}")"
 
+# Configuration options
+POMPOM_WORK_INTERVAL="${POM_WORK_INTERVAL:-25}"
+POMPOM_BREAK_INTERVAL="${POMPOM_BREAK_INTERVAL:-5}"
+POMPOM_SILENT="${POMPOM_SILENT:-0}"
+POMPOM_INVIS="${POMPOM_INVIS:-0}"
+
 # Default intervals are 25 minutes and 5 minutes.
-WORKINTERVAL=$(( 60 * 25 ))
-BREAKINTERVAL=$(( 60 * 5 ))
+WORKINTERVAL=$(( 60 * POMPOM_WORK_INTERVAL ))
+BREAKINTERVAL=$(( 60 * POMPOM_BREAK_INTERVAL ))
 
 _terminate()
 {
@@ -31,6 +36,8 @@ _alert() {
 
 _notify()
 {
+	[[ ! "$POMPOM_INVIS" -eq 0 ]] && return 0
+
 	local MSG
 	MSG="${1:-}"
 
@@ -44,6 +51,8 @@ _notify()
 
 _say()
 {
+	[[ ! "$POMPOM_SILENT" -eq 0 ]] && return 0
+
 	if [[ -x "$(command -v say)" ]]
 	then
 		say -v Moira "${1}"
@@ -271,7 +280,11 @@ case "${COMMAND}" in
 		fi
 		;;
 	config )
-		_terminate "Config doesn't exist yet"
+		echo "POMOM_WORK_INTERVAL is ${POMPOM_WORK_INTERVAL}"
+		echo "POMPOM_BREAK_INTERVAL is ${POMPOM_BREAK_INTERVAL}"
+		echo "POMPOM_SILENT is ${POMPOM_SILENT}"
+		echo "POMPOM_INVIS is ${POMPOM_INVIS}"
+		exit 0
 		;;
 	* )
 		_terminate "'${1}' is not a valid command"
