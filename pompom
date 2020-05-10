@@ -136,7 +136,7 @@ fi
 if [[ "${#}" -eq 1 && "${1}" = "-h" ]]
 then
 	cat <<-EOF 1>&2
-	pompom is a simple audio-based command-line pomodoro utility.
+	pompom is a simple command-line pomodoro utility.
 
 	It has the following options:
 
@@ -151,6 +151,8 @@ then
 	until resumed
 
 	'resume' will resume a paused pomodoro interval
+
+	'config' will show the current configuration
 EOF
   exit 1
 fi
