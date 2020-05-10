@@ -39,7 +39,7 @@ sudo mv ./pompom /usr/bin/pompom
 The following environment variables can be set to change the behaviour of pompom;
 
 ```
-POMOM_WORK_INTERVAL sets the work interval in minutes
+POMPOM_WORK_INTERVAL sets the work interval in minutes
 POMPOM_BREAK_INTERVAL sets the break interval in minutes
 POMPOM_SILENT disables audio notifications when set to 1
 POMPOM_INVIS disables visual notifications when set to 1
